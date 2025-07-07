@@ -19,7 +19,9 @@ A high-performance REST API for fetching competitive programming ratings from mu
 
 ## 🌟 Try the API
 
-This Space is deployed and ready to use! The API is available at the URL shown above.
+This Space is deployed and ready to use!
+
+**🔗 Live API URL**: https://muneer320-cpstats-api.hf.space/
 
 **⚠️ Authentication Required**: This API requires an API key for security. Contact the Space owner for access.
 
@@ -28,13 +30,13 @@ This Space is deployed and ready to use! The API is available at the URL shown a
 Check if the API is running:
 
 ```bash
-curl https://your-space-name-username.hf.space/health
+curl https://muneer320-cpstats-api.hf.space/health
 ```
 
 Get supported platforms:
 
 ```bash
-curl https://your-space-name-username.hf.space/platforms
+curl https://muneer320-cpstats-api.hf.space/platforms
 ```
 
 ### Using the API
@@ -43,7 +45,7 @@ All main endpoints require authentication with an API key:
 
 ```bash
 curl -H "Authorization: Bearer your-api-key" \
-     "https://your-space-name-username.hf.space/rating/codeforces/tourist"
+     "https://muneer320-cpstats-api.hf.space/rating/codeforces/tourist"
 ```
 
 ## 🚀 Features
@@ -75,8 +77,8 @@ curl -H "Authorization: Bearer your-api-key" \
 
 ### Protected Endpoints (Require API Key)
 
-| Method | Endpoint                        | Description                   |
-| ------ | ------------------------------- | ----------------------------- |
+| Method | Endpoint                            | Description                   |
+| ------ | ----------------------------------- | ----------------------------- |
 | `GET`  | `/rating/{platform}/{username}` | Get single user rating        |
 | `POST` | `/rating`                       | Get single user rating (POST) |
 | `POST` | `/ratings`                      | Get multiple user ratings     |
@@ -87,7 +89,7 @@ curl -H "Authorization: Bearer your-api-key" \
 
 ```bash
 curl -H "Authorization: Bearer your-api-key" \
-     "https://your-space-name-username.hf.space/rating/codeforces/tourist"
+     "https://muneer320-cpstats-api.hf.space/rating/codeforces/tourist"
 ```
 
 **Response:**
@@ -112,10 +114,10 @@ curl -X POST \
      -d '{
        "requests": [
          {"platform": "codeforces", "username": "tourist"},
-         {"platform": "leetcode", "username": "user123"}
+         {"platform": "leetcode", "username": "jiangly"}
        ]
      }' \
-     "https://your-space-name-username.hf.space/ratings"
+     "https://muneer320-cpstats-api.hf.space/ratings"
 ```
 
 **Response:**
@@ -127,19 +129,100 @@ curl -X POST \
       "platform": "codeforces",
       "username": "tourist",
       "rating": 3726,
+      "max_rating": 3979,
+      "rank": "legendary grandmaster",
       "status": "success"
     },
     {
       "platform": "leetcode",
-      "username": "user123",
-      "rating": 2400,
+      "username": "jiangly",
+      "rating": 3400,
+      "global_ranking": 15,
       "status": "success"
     }
   ],
-  "average_rating": 3063.0,
+  "average_rating": 3563.0,
   "total_requests": 2,
   "successful_requests": 2
 }
+```
+
+### Testing Different Platforms
+
+Try these examples with real usernames:
+
+```bash
+# Get Codeforces rating for tourist (legendary competitive programmer)
+curl -H "Authorization: Bearer your-api-key" \
+     "https://muneer320-cpstats-api.hf.space/rating/codeforces/tourist"
+
+# Get LeetCode rating for a user
+curl -H "Authorization: Bearer your-api-key" \
+     "https://muneer320-cpstats-api.hf.space/rating/leetcode/jiangly"
+
+# Get CodeChef rating
+curl -H "Authorization: Bearer your-api-key" \
+     "https://muneer320-cpstats-api.hf.space/rating/codechef/gennady"
+```
+
+### JavaScript/Web Integration
+
+```javascript
+const API_BASE = "https://muneer320-cpstats-api.hf.space";
+const API_KEY = "your-api-key";
+
+async function getUserRating(platform, username) {
+  const response = await fetch(
+    `${API_BASE}/rating/${platform}/${username}`,
+    {
+      headers: {
+        Authorization: `Bearer ${API_KEY}`,
+      },
+    }
+  );
+  return await response.json();
+}
+
+// Usage
+getUserRating("codeforces", "tourist").then((data) => {
+  console.log(`${data.username} has rating ${data.rating} on ${data.platform}`);
+});
+```
+
+### Python Integration
+
+```python
+import requests
+
+API_BASE = 'https://muneer320-cpstats-api.hf.space'
+API_KEY = 'your-api-key'
+
+def get_user_rating(platform, username):
+    headers = {'Authorization': f'Bearer {API_KEY}'}
+    response = requests.get(f'{API_BASE}/rating/{platform}/{username}', headers=headers)
+    return response.json()
+
+def get_multiple_ratings(requests_list):
+    headers = {
+        'Authorization': f'Bearer {API_KEY}',
+        'Content-Type': 'application/json'
+    }
+    data = {'requests': requests_list}
+    response = requests.post(f'{API_BASE}/ratings', headers=headers, json=data)
+    return response.json()
+
+# Usage examples
+rating = get_user_rating('codeforces', 'tourist')
+print(f"Tourist's Codeforces rating: {rating['rating']}")
+
+# Batch request
+batch_request = [
+    {'platform': 'codeforces', 'username': 'tourist'},
+    {'platform': 'leetcode', 'username': 'jiangly'},
+    {'platform': 'codechef', 'username': 'gennady'}
+]
+results = get_multiple_ratings(batch_request)
+print(f"Average rating: {results['average_rating']}")
 ```
 
 ## 🔧 Use Cases
@@ -159,7 +242,7 @@ This API was originally built to power Discord bots that track competitive progr
 The API includes comprehensive health monitoring:
 
 ```bash
-curl https://your-space-name-username.hf.space/health
+curl https://muneer320-cpstats-api.hf.space/health
 ```
 
 Returns system status, cache information, and rate limiting details.
