@@ -276,4 +276,9 @@ if __name__ == "__main__":
     debug = os.getenv("DEBUG", "False").lower() == "true"
 
     logger.info(f"Starting server on {host}:{port}")
-    uvicorn.run(app, host=host, port=port, reload=debug)
+    
+    # For production/container environments, don't use reload
+    if debug and os.getenv("CONTAINER_ENV") != "true":
+        uvicorn.run("main:app", host=host, port=port, reload=True)
+    else:
+        uvicorn.run(app, host=host, port=port)

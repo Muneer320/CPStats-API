@@ -19,6 +19,9 @@ COPY . .
 RUN useradd -m -u 1000 user && chown -R user:user /app
 USER user
 
+# Set container environment variable
+ENV CONTAINER_ENV=true
+
 # Expose port 7860
 EXPOSE 7860
 
