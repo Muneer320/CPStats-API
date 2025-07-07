@@ -1,10 +1,50 @@
+---
+title: CPStats API
+emoji: 🏆
+colorFrom: blue
+colorTo: green
+sdk: docker
+pinned: false
+license: mit
+short_description: REST API for fetching competitive programming ratings from multiple platforms
+---
+
 # CPStats API
 
 [![Python](https://img.shields.io/badge/python-v3.8+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104.1-009688.svg?style=flat&logo=FastAPI&logoColor=white)](https://fastapi.tiangolo.com)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A high-performance REST API for fetching competitive programming ratings from multiple platforms including LeetCode, Codeforces, and CodeChef. Built with FastAPI for my Discord Bot.
+A high-performance REST API for fetching competitive programming ratings from multiple platforms including LeetCode, Codeforces, and CodeChef. Built with FastAPI and designed for production use.
+
+## 🌟 Try the API
+
+This Space is deployed and ready to use! The API is available at the URL shown above.
+
+**⚠️ Authentication Required**: This API requires an API key for security. Contact the Space owner for access.
+
+### Quick Test
+
+Check if the API is running:
+
+```bash
+curl https://your-space-name-username.hf.space/health
+```
+
+Get supported platforms:
+
+```bash
+curl https://your-space-name-username.hf.space/platforms
+```
+
+### Using the API
+
+All main endpoints require authentication with an API key:
+
+```bash
+curl -H "Authorization: Bearer your-api-key" \
+     "https://your-space-name-username.hf.space/rating/codeforces/tourist"
+```
 
 ## 🚀 Features
 
@@ -23,56 +63,7 @@ A high-performance REST API for fetching competitive programming ratings from mu
 | **Codeforces** | Current rating, max rating, rank, contribution    |
 | **CodeChef**   | Current rating, highest rating                    |
 
-## 🛠️ Installation
-
-### Prerequisites
-
-- Python 3.8+
-- pip
-
-### Setup
-
-1. **Clone the repository**
-
-   ```bash
-   git clone <repository-url>
-   cd cp-leaderboard-api
-   ```
-
-2. **Install dependencies**
-
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. **Configure environment**
-
-   ```bash
-   cp .env.example .env
-   # Edit .env with your configuration
-   ```
-
-4. **Generate API key**
-
-   ```python
-   python -c "import secrets; print(secrets.token_urlsafe(32))"
-   ```
-
-5. **Start the server**
-   ```bash
-   python main.py
-   ```
-
-The API will be available at `http://localhost:8000`
-
-## 📚 API Documentation
-
-Once deployed, access the interactive API documentation at:
-
-- `/docs` - Swagger UI (when DEBUG=True)
-- `/redoc` - ReDoc interface (when DEBUG=True)
-
-## 🔗 Endpoints
+## 🔗 Available Endpoints
 
 ### Public Endpoints
 
@@ -90,22 +81,13 @@ Once deployed, access the interactive API documentation at:
 | `POST` | `/rating`                       | Get single user rating (POST) |
 | `POST` | `/ratings`                      | Get multiple user ratings     |
 
-## 🔐 Authentication
-
-All protected endpoints require an API key in the Authorization header:
-
-```bash
-curl -H "Authorization: Bearer your-api-key" \
-     http://localhost:8000/rating/codeforces/username
-```
-
 ## 📖 Usage Examples
 
 ### Single Rating Query
 
 ```bash
 curl -H "Authorization: Bearer your-api-key" \
-     "http://localhost:8000/rating/codeforces/tourist"
+     "https://your-space-name-username.hf.space/rating/codeforces/tourist"
 ```
 
 **Response:**
@@ -133,7 +115,7 @@ curl -X POST \
          {"platform": "leetcode", "username": "user123"}
        ]
      }' \
-     "http://localhost:8000/ratings"
+     "https://your-space-name-username.hf.space/ratings"
 ```
 
 **Response:**
@@ -160,57 +142,6 @@ curl -X POST \
 }
 ```
 
-## ⚙️ Configuration
-
-Configure the API using environment variables in `.env`:
-
-```env
-# API Configuration
-API_HOST=0.0.0.0
-API_PORT=8000
-DEBUG=False
-
-# Security
-API_KEY=your-secret-api-key-here
-
-# CORS (comma-separated)
-ALLOWED_ORIGINS=https://yourdomain.com
-
-# Rate Limiting
-RATE_LIMIT_REQUESTS=100
-RATE_LIMIT_WINDOW=3600
-
-# Caching
-ENABLE_CACHE=True
-CACHE_TTL=300
-```
-
-## 🐳 Docker Deployment
-
-### Using Docker
-
-```bash
-# Build image
-docker build -t cp-leaderboard-api .
-
-# Run container
-docker run -p 8000:8000 --env-file .env cp-leaderboard-api
-```
-
-### Using Docker Compose
-
-```yaml
-version: "3.8"
-services:
-  api:
-    build: .
-    ports:
-      - "8000:8000"
-    env_file:
-      - .env
-    restart: unless-stopped
-```
-
 ## 🔧 Use Cases
 
 This API was originally built to power Discord bots that track competitive programming leaderboards, but can be used for:
@@ -225,54 +156,39 @@ This API was originally built to power Discord bots that track competitive progr
 
 ### Health Check
 
+The API includes comprehensive health monitoring:
+
 ```bash
-curl http://localhost:8000/health
+curl https://your-space-name-username.hf.space/health
 ```
 
-### Rate Limiting
-
-- Default: 100 requests per hour per API key
-- Configurable via `RATE_LIMIT_REQUESTS` and `RATE_LIMIT_WINDOW`
-- Returns `429 Too Many Requests` when exceeded
-
-### Caching
-
-- Responses cached for 5 minutes by default
-- Reduces load on external APIs
-- Configurable via `CACHE_TTL`
+Returns system status, cache information, and rate limiting details.
 
 ## 🛡️ Security Features
 
 - **API Key Authentication**: Secure access control
-- **Rate Limiting**: Prevent abuse and overuse
+- **Rate Limiting**: Prevent abuse and overuse (100 requests/hour by default)
 - **CORS Configuration**: Control cross-origin requests
 - **Input Validation**: Sanitize and validate all inputs
 - **Error Handling**: Graceful error responses
 
-## 🤝 Contributing
+## 🔧 Local Development
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
+To run this API locally:
+
+1. **Clone the repository**
+2. **Install dependencies**: `pip install -r requirements.txt`
+3. **Set environment variables**: Copy `.env.example` to `.env` and configure
+4. **Generate API key**: `python -c "import secrets; print(secrets.token_urlsafe(32))"`
+5. **Run**: `python main.py`
 
 ## 📜 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License.
 
 ## ⚠️ Disclaimer
 
 This API fetches data from public platforms and respects their rate limits. Users are responsible for complying with the terms of service of the respective platforms.
-
-## 🆘 Support
-
-If you encounter issues:
-
-1. Check the health endpoint: `/health`
-2. Verify your API key and environment configuration
-3. Review the logs for error details
-4. Open an issue on GitHub with detailed information
 
 ---
 

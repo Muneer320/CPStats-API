@@ -77,8 +77,15 @@ Thumbs.db
 logs/
 
 # Deployment files
-DEPLOYMENT.md
+*DEPLOYMENT.md
 PRODUCTION_CHECKLIST.md
+
+# Push scripts (local deployment helpers)
+push-to-both.*
+
+# Hugging Face
+.huggingface/
+hf_cache/
 
 # Temporary files
 *.tmp

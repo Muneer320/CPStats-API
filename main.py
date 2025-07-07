@@ -30,7 +30,7 @@ if not API_KEY:
     logger.error("API_KEY environment variable is required")
     raise ValueError("API_KEY environment variable is required")
 
-logger.info("Starting CP Leaderboard API...")
+logger.info("Starting CPStats API...")
 
 # Rate limiting
 request_counts = defaultdict(list)
@@ -64,7 +64,7 @@ def rate_limit_check(client_ip: str):
 
 
 app = FastAPI(
-    title="CP Leaderboard API",
+    title="CPStats API",
     description="REST API for fetching competitive programming ratings from multiple platforms",
     version="1.0.0",
     docs_url="/docs" if os.getenv("DEBUG",
@@ -127,7 +127,7 @@ class SingleRatingRequest(BaseModel):
 async def root():
     """Root endpoint with API information"""
     return {
-        "message": "CP Leaderboard API",
+        "message": "CPStats API",
         "version": "1.0.0",
         "status": "online",
         "supported_platforms": ["leetcode", "codeforces", "codechef"],
@@ -271,7 +271,9 @@ async def get_supported_platforms():
 
 if __name__ == "__main__":
     host = os.getenv("API_HOST", "0.0.0.0")
-    port = int(os.getenv("API_PORT", "8000"))
+    # Use port 7860 for Hugging Face Spaces, 8000 as fallback
+    port = int(os.getenv("PORT", os.getenv("API_PORT", "7860")))
     debug = os.getenv("DEBUG", "False").lower() == "true"
 
+    logger.info(f"Starting server on {host}:{port}")
     uvicorn.run(app, host=host, port=port, reload=debug)
