@@ -64,7 +64,7 @@ def rate_limit_check(client_ip: str):
 
 
 app = FastAPI(
-    title="CPStats API",
+    title="CPStats-API",
     description="REST API for fetching competitive programming ratings from multiple platforms",
     version="1.0.0",
     docs_url="/docs" if os.getenv("DEBUG",

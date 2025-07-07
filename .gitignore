@@ -83,6 +83,9 @@ PRODUCTION_CHECKLIST.md
 # Push scripts (local deployment helpers)
 push-to-both.*
 
+# Repository management guides
+DUAL_REPO_GUIDE.md
+
 # Hugging Face
 .huggingface/
 hf_cache/
