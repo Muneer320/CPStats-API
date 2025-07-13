@@ -4,7 +4,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104.1-009688.svg?style=flat&logo=FastAPI&logoColor=white)](https://fastapi.tiangolo.com)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A high-performance REST API for fetching competitive programming ratings from multiple platforms including LeetCode, Codeforces, and CodeChef. Built with FastAPI and designed for production use.
+A high-performance REST API for fetching competitive programming ratings from multiple platforms including LeetCode, Codeforces, CodeChef, and AtCoder. Built with FastAPI and designed for production use.
 
 ## 🌟 Try the API
 
@@ -37,9 +37,14 @@ curl -H "Authorization: Bearer your-api-key" \
      "https://muneer320-cpstats-api.hf.space/rating/codeforces/tourist"
 ```
 
+```bash
+curl -H "Authorization: Bearer your-api-key" \
+     "https://muneer320-cpstats-api.hf.space/rating/atcoder/tourist"
+```
+
 ## 🚀 Features
 
-- **Multi-Platform Support**: LeetCode, Codeforces, and CodeChef
+- **Multi-Platform Support**: LeetCode, Codeforces, CodeChef, and AtCoder
 - **Batch Processing**: Handle multiple platform/username pairs in a single request
 - **Rate Limiting**: Built-in request throttling and API protection
 - **Caching**: Intelligent response caching to minimize external API calls
@@ -53,6 +58,7 @@ curl -H "Authorization: Bearer your-api-key" \
 | **LeetCode**   | Contest rating, global ranking, contests attended |
 | **Codeforces** | Current rating, max rating, rank, contribution    |
 | **CodeChef**   | Current rating, highest rating                    |
+| **AtCoder**    | Current rating, max rating, rank, country         |
 
 ## 🔗 Available Endpoints
 
@@ -66,8 +72,8 @@ curl -H "Authorization: Bearer your-api-key" \
 
 ### Protected Endpoints (Require API Key)
 
-| Method | Endpoint                            | Description                   |
-| ------ | ----------------------------------- | ----------------------------- |
+| Method | Endpoint                        | Description                   |
+| ------ | ------------------------------- | ----------------------------- |
 | `GET`  | `/rating/{platform}/{username}` | Get single user rating        |
 | `POST` | `/rating`                       | Get single user rating (POST) |
 | `POST` | `/ratings`                      | Get multiple user ratings     |
@@ -103,7 +109,8 @@ curl -X POST \
      -d '{
        "requests": [
          {"platform": "codeforces", "username": "tourist"},
-         {"platform": "leetcode", "username": "jiangly"}
+         {"platform": "leetcode", "username": "jiangly"},
+         {"platform": "atcoder", "username": "tourist"}
        ]
      }' \
      "https://muneer320-cpstats-api.hf.space/ratings"
@@ -161,14 +168,11 @@ const API_BASE = "https://muneer320-cpstats-api.hf.space";
 const API_KEY = "your-api-key";
 
 async function getUserRating(platform, username) {
-  const response = await fetch(
-    `${API_BASE}/rating/${platform}/${username}`,
-    {
-      headers: {
-        Authorization: `Bearer ${API_KEY}`,
-      },
-    }
-  );
+  const response = await fetch(`${API_BASE}/rating/${platform}/${username}`, {
+    headers: {
+      Authorization: `Bearer ${API_KEY}`,
+    },
+  });
   return await response.json();
 }
 

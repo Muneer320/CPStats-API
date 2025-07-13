@@ -2,6 +2,7 @@ import requests
 import time
 import logging
 import re
+import json
 from typing import Dict, Any
 from bs4 import BeautifulSoup
 
@@ -408,6 +409,160 @@ class RatingFetcher:
                 'error': str(e)
             }
 
+    def get_atcoder_rating(self, username: str) -> Dict[str, Any]:
+        """Fetch AtCoder rating for a user"""
+        logger = logging.getLogger(__name__)
+        logger.info(f"Fetching AtCoder rating for user: {username}")
+
+        try:
+            url = f"https://atcoder.jp/users/{username}"
+            response = self.session.get(url, timeout=10)
+
+            # Check if user exists (404 or page not found)
+            if response.status_code == 404:
+                logger.warning(f"AtCoder user not found: {username}")
+                return {
+                    'platform': 'atcoder',
+                    'username': username,
+                    'rating': 0,
+                    'status': 'user_not_found',
+                    'error': 'User not found'
+                }
+
+            response.raise_for_status()
+            html_content = response.text
+            soup = BeautifulSoup(html_content, 'html.parser')
+
+            # Initialize defaults
+            rating = 0
+            max_rating = 0
+            rank = 0
+            country = ""
+
+            # Parse HTML table
+            try:
+                # Look for the rating in the user statistics table
+                table_cells = soup.find_all(['td', 'th'])
+                for i, cell in enumerate(table_cells):
+                    cell_text = cell.get_text(strip=True)
+                    if cell_text == "Rating":
+                        # Rating value should be in the next cell
+                        if i + 1 < len(table_cells):
+                            rating_text = table_cells[i +
+                                                      1].get_text(strip=True)
+                            rating_digits = re.sub(
+                                r'[^\d]', '', rating_text)
+                            if rating_digits:
+                                try:
+                                    rating = int(rating_digits)
+                                    logger.debug(
+                                        f"Successfully parsed AtCoder rating from table for {username}: {rating}")
+                                except ValueError:
+                                    logger.debug(
+                                        f"Failed to parse AtCoder rating from table for {username}: '{rating_text}'")
+                        break
+
+                    elif "Highest Rating" in cell_text:
+                        if i + 1 < len(table_cells):
+                            max_rating_text = table_cells[i +
+                                                          1].get_text(strip=True)
+                            max_rating_digits = re.sub(
+                                r'[^\d]', '', max_rating_text)
+                            if max_rating_digits:
+                                try:
+                                    max_rating = int(max_rating_digits)
+                                    logger.debug(
+                                        f"Successfully parsed AtCoder max rating from table for {username}: {max_rating}")
+                                except ValueError:
+                                    logger.debug(
+                                        f"Failed to parse AtCoder max rating from table for {username}: '{max_rating_text}'")
+
+                    elif "Rank" in cell_text:
+                        print("rank found")
+                        if i + 1 < len(table_cells):
+                            rank_text = table_cells[i +
+                                                    1].get_text(strip=True)
+                            rank_text = re.sub(
+                                r'[^\d]', '', rank_text)
+                            if rank_text:
+                                try:
+                                    rank = int(rank_text)
+                                    logger.debug(
+                                        f"Successfully parsed AtCoder rank from table for {username}: {rank}")
+                                except ValueError:
+                                    logger.debug(
+                                        f"Failed to parse AtCoder rank from table for {username}: '{rank_text}'")
+
+            except Exception as e:
+                logger.debug(
+                    f"Error parsing AtCoder table for {username}: {e}")
+
+            # Try to find country information
+            try:
+                table_cells = soup.find_all(['td', 'th'])
+                for i, cell in enumerate(table_cells):
+                    if "Country" in cell.get_text(strip=True):
+                        if i + 1 < len(table_cells):
+                            country = table_cells[i + 1].get_text(strip=True)
+                            logger.debug(
+                                f"Found AtCoder country for {username}: {country}")
+                        break
+            except Exception as e:
+                logger.debug(
+                    f"Error parsing AtCoder country for {username}: {e}")
+
+            # Ensure max_rating is at least equal to current rating
+            if max_rating < rating:
+                max_rating = rating
+
+            # Edge case: If no rating found at all
+            if rating == 0 and max_rating == 0:
+                logger.warning(
+                    f"No rating information found for AtCoder user: {username}")
+
+            logger.info(
+                f"Successfully fetched AtCoder data for {username}: rating={rating}, max_rating={max_rating}, rank={rank}")
+
+            return {
+                'platform': 'atcoder',
+                'username': username,
+                'rating': rating,
+                'max_rating': max_rating,
+                'rank': rank,
+                'country': country,
+                'status': 'success'
+            }
+
+        except requests.exceptions.Timeout:
+            logger.error(f"Timeout while fetching AtCoder data for {username}")
+            return {
+                'platform': 'atcoder',
+                'username': username,
+                'rating': 0,
+                'status': 'error',
+                'error': 'Request timeout'
+            }
+        except requests.exceptions.ConnectionError:
+            logger.error(
+                f"Connection error while fetching AtCoder data for {username}")
+            return {
+                'platform': 'atcoder',
+                'username': username,
+                'rating': 0,
+                'status': 'error',
+                'error': 'Connection error'
+            }
+        except Exception as e:
+            logger.error(
+                f"Unexpected error fetching AtCoder data for {username}: {str(e)}")
+            return {
+                'platform': 'atcoder',
+                'username': username,
+                'rating': 0,
+                'status': 'error',
+                'error': str(e)
+            }
+
     def get_rating_by_platform(self, platform: str, username: str) -> Dict[str, Any]:
         """Get rating for a specific platform and username"""
         platform = platform.lower().strip()
@@ -418,6 +573,8 @@ class RatingFetcher:
             return self.get_codeforces_rating(username)
         elif platform == 'codechef':
             return self.get_codechef_rating(username)
+        elif platform == 'atcoder':
+            return self.get_atcoder_rating(username)
         else:
             return {
                 'platform': platform,

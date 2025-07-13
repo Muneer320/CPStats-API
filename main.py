@@ -130,7 +130,7 @@ async def root():
         "message": "CPStats API",
         "version": "1.0.0",
         "status": "online",
-        "supported_platforms": ["leetcode", "codeforces", "codechef"],
+        "supported_platforms": ["leetcode", "codeforces", "codechef", "atcoder"],
         "endpoints": {
             "single_rating": "/rating/{platform}/{username}",
             "multiple_ratings": "/ratings (POST)",
@@ -175,7 +175,7 @@ async def get_single_rating(
     """
     Get rating for a single platform and username (Requires API key)
 
-    - **platform**: Platform name (leetcode, codeforces, codechef)
+    - **platform**: Platform name (leetcode, codeforces, codechef, atcoder)
     - **username**: Username on the platform
     """
     try:
@@ -264,6 +264,11 @@ async def get_supported_platforms():
             {
                 "name": "codechef",
                 "description": "CodeChef competitive programming platform",
+                "rating_type": "Contest rating"
+            },
+            {
+                "name": "atcoder",
+                "description": "AtCoder competitive programming platform",
                 "rating_type": "Contest rating"
             }
         ]
