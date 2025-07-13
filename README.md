@@ -9,40 +9,69 @@ license: mit
 short_description: Historical competitive programming ratings API
 ---
 
+<div align="center">
+
 # CPStats API
 
-CPStats is a small FastAPI service for looking up public competitive programming profiles on AtCoder, Codeforces, CodeChef and LeetCode. It was built for the SST Lounge Discord community, which is now inactive. SST-Lounge-Bot has an optional `/cp_rating` command that can call this API when both services are configured.
+**One HTTP interface for public competitive-programming ratings.**
 
-The API works locally with an API key. Its former Hugging Face Space has been unreliable; this README does not claim a live public deployment. Ratings are fetched from third-party sites at request time and can be unavailable when those sites change markup or block automated requests. In particular, CodeChef returned HTTP 403 from the development environment during this update.
+Look up a handle, keep its platform context, and return a clear status when the upstream site is unavailable.
 
-## Run locally
+[![FastAPI](https://img.shields.io/badge/API-FastAPI-009688?logo=fastapi&logoColor=white)](main.py) [![Docker](https://img.shields.io/badge/run-Docker-2496ED?logo=docker&logoColor=white)](Dockerfile) [![MIT](https://img.shields.io/badge/license-MIT-4d9aa2)](LICENSE)
 
-Python 3.13 and Docker are supported. Create a `.env` file from `.env.example`, set a long random `API_KEY`, then:
+[**Try locally**](#run-a-local-instance) · [**API behavior**](#responses-you-can-handle) · [**Verify**](#verify-and-contribute)
 
-```bash
-python -m venv .venv
-# Activate .venv for your shell, then:
-python -m pip install -r requirements.txt
-python main.py
-```
+</div>
 
-Or run the container:
+## A small bridge from profiles to a community bot
 
-```bash
+CPStats was built for the SST Lounge Discord community, which is now inactive. It gathers public profile ratings from AtCoder, Codeforces, CodeChef and LeetCode behind a consistent HTTP interface. The optional `/cp_rating` command in [SST Lounge Bot](https://github.com/Muneer320/SST-Lounge-Bot) can use it when both services are configured.
+
+![Actual CPStats health, platform-list and successful AtCoder lookup HTTP responses](docs/images/responses.svg)
+
+*Actual local HTTP responses captured on 2026-10-31, including a live public AtCoder lookup. Ratings change; this snapshot is an API example, not a current leaderboard or performance benchmark. The AtCoder and Codeforces live contract checks also passed during this review.*
+
+| One handle or a batch | Preserve the meaning | Fail explicitly |
+| --- | --- | --- |
+| GET/POST single lookups and batches of up to 20 | Platform-specific results; unrated can be `null`, never an invented average | Distinct missing-user, invalid-input, upstream, authentication and rate-limit statuses |
+
+> [!NOTE]
+> **Maintained local service for a historical community project.** No working public deployment is claimed. Upstream markup, access restrictions or outages can break a lookup; a successful check today is not a guarantee for every provider or future request.
+
+## Run a local instance
+
+With Git and Docker installed:
+
+```sh
+git clone https://github.com/Muneer320/CPStats-API.git
+cd CPStats-API
 docker build -t cpstats-api .
-docker run --rm -p 7860:7860 -e API_KEY=local-demo-key cpstats-api
+docker run --rm -p 127.0.0.1:7860:7860 -e API_KEY=local-demo-key cpstats-api
 ```
 
-`GET http://localhost:7860/health` returns 200 when a key is configured. For a live lookup:
+The example key is for this loopback-only demo. Use a long private random key for an actual deployment; do not put it in a public frontend. Check health and make a best-effort live request from another terminal (PowerShell users can use `curl.exe`):
 
-```bash
-curl -H "Authorization: Bearer local-demo-key" \
-  http://localhost:7860/rating/atcoder/tourist
+```sh
+curl http://localhost:7860/health
+curl -H "Authorization: Bearer local-demo-key" http://localhost:7860/rating/atcoder/tourist
 ```
 
-For the SST bot, set `CPSTATS_API_URL` to this service's base URL and `CPSTATS_API_KEY` to the same key. Do not expose the key in a client-side application.
+Health returns HTTP 200 when a key is configured; a lookup returns rating data or a documented error. For the SST bot, set `CPSTATS_API_URL` to this API's base URL and `CPSTATS_API_KEY` to the same private key.
 
-## API behavior
+<details>
+<summary><strong>Native Python setup and configuration</strong></summary>
+
+Use Python 3.13 in a virtual environment. Install `python -m pip install -r requirements.txt`, copy `.env.example` to `.env` and set `API_KEY`. Start a loopback-only native server with:
+
+```sh
+python -m uvicorn main:app --host 127.0.0.1 --port 7860
+```
+
+`python main.py` also works but defaults to host `0.0.0.0` unless `API_HOST` is configured. `PORT` defaults to 7860. Review the environment example for cache, origin and rate-limit settings. The former Hugging Face Space, if restored, needs an `API_KEY` secret and the repository Dockerfile.
+
+</details>
+
+## Responses you can handle
 
 | Endpoint | Access | Result |
 |---|---|---|
@@ -56,11 +85,28 @@ Single lookups return 404 for a missing user, 502 for an upstream failure, 400 f
 
 Only successful single lookups enter the in-memory cache (default 15 minutes). `RATE_LIMIT_REQUESTS` and `RATE_LIMIT_WINDOW` set an in-memory limit per client IP and process. This is suitable for a small single-instance demo, not a distributed rate limit. `ALLOWED_ORIGINS` is empty by default; add explicit origins only for browser clients. Server-to-server callers do not need CORS.
 
-## Verify
+## The lookup path
 
-```bash
+```mermaid
+flowchart LR
+    Client[Caller with bearer key] --> API[FastAPI validation and per-IP limit]
+    API -->|Single lookup| Cache[In-memory success cache]
+    Cache --> Fetch[Platform fetcher]
+    API -->|Batch| Pool[Worker pool, uncached]
+    Pool --> Fetch
+    Fetch --> Sites[Public platform endpoints or HTML]
+    Sites --> Parse[Platform-specific parsing and status]
+```
+
+The cache and request limits belong to one process; this is not a distributed rate limiter or shared cache. Public handles and request metadata pass to the relevant upstream platform. There is no persistent profile-history database. CORS origins default to empty; server-to-server bot callers do not need browser CORS.
+
+## Verify and contribute
+
+```sh
 python -m pip install pytest httpx
 python -m pytest -q
 ```
 
-The tests use fixed response fixtures, so they work without third-party network access. A weekly GitHub workflow also checks live AtCoder and Codeforces responses with `python -m tests.live_contract`, which may flag upstream changes. The Hugging Face deployment, if restored, must have an `API_KEY` secret and use the Dockerfile in this repository.
+The unit/API tests use fixed fixtures without third-party network access. The separate `python -m tests.live_contract` command and weekly GitHub workflow check live AtCoder/Codeforces responses and may flag upstream changes. Run the fixture tests for a parser/API change, include a sanitized upstream fixture when appropriate and document response/status changes. Report reproducible issues in [the tracker](https://github.com/Muneer320/CPStats-API/issues).
+
+Source: [HTTP API](main.py), [platform fetchers](rating_fetcher.py), [tests](tests/). [MIT license](LICENSE).
