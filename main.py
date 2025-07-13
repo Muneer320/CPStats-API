@@ -99,8 +99,9 @@ def cached_single_rating(platform: str, username: str, cache_key: int):
 
 
 def get_cache_key():
-    """Generate cache key based on current time (5 minute intervals)"""
-    return int(time.time() // 300)  # 5 minutes
+    """Generate cache key based on CACHE_TTL"""
+    cache_ttl = int(os.getenv("CACHE_TTL", "14400"))  # Default to 4 hours
+    return int(time.time() // cache_ttl)
 
 
 # Initialize rating fetcher
