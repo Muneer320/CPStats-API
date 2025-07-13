@@ -93,3 +93,4 @@ hf_cache/
 # Temporary files
 *.tmp
 *.temp
+_*
