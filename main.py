@@ -1,290 +1,132 @@
-from fastapi import FastAPI, HTTPException, Depends, Security
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from pydantic import BaseModel
-from typing import List
-import uvicorn
+"""HTTP interface for the historical CPStats ratings service."""
+
+from collections import defaultdict, deque
+from concurrent.futures import ThreadPoolExecutor
+from threading import Lock
 import os
-import logging
-from functools import lru_cache
+import secrets
 import time
-from collections import defaultdict
-from rating_fetcher import RatingFetcher
+
 from dotenv import load_dotenv
+from fastapi import Depends, FastAPI, HTTPException, Request, Security
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from pydantic import BaseModel, Field
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+from rating_fetcher import PLATFORMS, RatingFetcher
 
-# Load environment variables from .env file
 load_dotenv()
-
-# Security
-security = HTTPBearer()
-API_KEY = os.getenv("API_KEY")
-
-if not API_KEY:
-    logger.error("API_KEY environment variable is required")
-    raise ValueError("API_KEY environment variable is required")
-
-logger.info("Starting CPStats API...")
-
-# Rate limiting
-request_counts = defaultdict(list)
+API_KEY = os.getenv("API_KEY", "")
 RATE_LIMIT = int(os.getenv("RATE_LIMIT_REQUESTS", "100"))
 RATE_WINDOW = int(os.getenv("RATE_LIMIT_WINDOW", "3600"))
+CACHE_TTL = int(os.getenv("CACHE_TTL", "900"))
+if min(RATE_LIMIT, RATE_WINDOW, CACHE_TTL) < 1:
+    raise ValueError("Rate and cache settings must be positive")
 
-# Rate limiting
-request_counts = defaultdict(list)
-RATE_LIMIT = int(os.getenv("RATE_LIMIT_REQUESTS", "100"))
-RATE_WINDOW = int(os.getenv("RATE_LIMIT_WINDOW", "3600"))
-
-
-def verify_api_key(credentials: HTTPAuthorizationCredentials = Security(security)):
-    """Verify API key for authentication"""
-    if credentials.credentials != API_KEY:
-        raise HTTPException(status_code=401, detail="Invalid API key")
-    return credentials.credentials
-
-
-def rate_limit_check(client_ip: str):
-    """Check if client has exceeded rate limit"""
-    now = time.time()
-    # Clean old requests
-    request_counts[client_ip] = [req_time for req_time in request_counts[client_ip]
-                                 if now - req_time < RATE_WINDOW]
-
-    if len(request_counts[client_ip]) >= RATE_LIMIT:
-        raise HTTPException(status_code=429, detail="Rate limit exceeded")
-
-    request_counts[client_ip].append(now)
-
-
-app = FastAPI(
-    title="CPStats-API",
-    description="REST API for fetching competitive programming ratings from multiple platforms",
-    version="1.0.0",
-    docs_url="/docs" if os.getenv("DEBUG",
-                                  "False").lower() == "true" else None,
-    redoc_url="/redoc" if os.getenv("DEBUG",
-                                    "False").lower() == "true" else None
-)
-
-# CORS middleware with strict origins for production
-allowed_origins = []
-origins_env = os.getenv("ALLOWED_ORIGINS", "")
-if origins_env:
-    allowed_origins = [origin.strip() for origin in origins_env.split(",")]
-else:
-    # Default to restrictive CORS in production
-    allowed_origins = ["https://discord.com"]
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=allowed_origins,
-    allow_credentials=True,
-    allow_methods=["GET", "POST"],
-    allow_headers=["*"],
-)
-
-# Cache for ratings (simple in-memory cache)
-
-
-@lru_cache(maxsize=1000)
-def cached_single_rating(platform: str, username: str, cache_key: int):
-    """Cached version of single rating fetch"""
-    return rating_fetcher.get_rating_by_platform(platform, username)
-
-
-def get_cache_key():
-    """Generate cache key based on CACHE_TTL"""
-    cache_ttl = int(os.getenv("CACHE_TTL", "14400"))  # Default to 4 hours
-    return int(time.time() // cache_ttl)
-
-
-# Initialize rating fetcher
-rating_fetcher = RatingFetcher()
-
-# Pydantic models for request validation
+app = FastAPI(title="CPStats API", version="1.1.0",
+              description="Best-effort public ratings lookup for a historical Discord project")
+origins = [item.strip() for item in os.getenv("ALLOWED_ORIGINS", "").split(",") if item.strip()]
+app.add_middleware(CORSMiddleware, allow_origins=origins, allow_credentials=False,
+                   allow_methods=["GET", "POST"], allow_headers=["Authorization", "Content-Type"])
+security = HTTPBearer(auto_error=False)
+fetcher = RatingFetcher()
+rate_counts = defaultdict(deque)
+rate_lock = Lock()
+cache = {}
+cache_lock = Lock()
 
 
 class RatingRequest(BaseModel):
-    platform: str
-    username: str
+    platform: str = Field(min_length=1, max_length=32)
+    username: str = Field(min_length=1, max_length=64)
 
 
 class MultipleRatingRequest(BaseModel):
-    requests: List[RatingRequest]
+    requests: list[RatingRequest] = Field(min_length=1, max_length=20)
 
 
-class SingleRatingRequest(BaseModel):
-    platform: str
-    username: str
+def authenticated(request: Request, credentials: HTTPAuthorizationCredentials | None = Security(security)):
+    if not API_KEY:
+        raise HTTPException(503, "API key is not configured")
+    if credentials is None or not secrets.compare_digest(credentials.credentials, API_KEY):
+        raise HTTPException(401, "Invalid API key")
+    ip = request.client.host if request.client else "unknown"
+    now = time.monotonic()
+    with rate_lock:
+        timestamps = rate_counts[ip]
+        while timestamps and now - timestamps[0] >= RATE_WINDOW:
+            timestamps.popleft()
+        if len(timestamps) >= RATE_LIMIT:
+            raise HTTPException(429, "Rate limit exceeded")
+        timestamps.append(now)
+
+
+def lookup(platform: str, username: str):
+    platform, username = platform.lower().strip(), username.strip()
+    if platform not in PLATFORMS:
+        raise HTTPException(400, "Unsupported platform")
+    if not username or len(username) > 64:
+        raise HTTPException(400, "Invalid username")
+    key = (platform, username)
+    now = time.monotonic()
+    with cache_lock:
+        cached = cache.get(key)
+        if cached and cached[0] > now and os.getenv("ENABLE_CACHE", "true").lower() == "true":
+            return cached[1]
+    result = fetcher.get_rating_by_platform(platform, username)
+    status = result.get("status")
+    if status == "user_not_found":
+        raise HTTPException(404, "User not found")
+    if status != "success":
+        raise HTTPException(502, "Platform lookup failed")
+    if os.getenv("ENABLE_CACHE", "true").lower() == "true":
+        with cache_lock:
+            cache[key] = (now + CACHE_TTL, result)
+            if len(cache) > 1000:
+                for stale in list(cache)[:100]:
+                    cache.pop(stale, None)
+    return result
 
 
 @app.get("/")
-async def root():
-    """Root endpoint with API information"""
-    return {
-        "message": "CPStats API",
-        "version": "1.0.0",
-        "status": "online",
-        "supported_platforms": ["leetcode", "codeforces", "codechef", "atcoder"],
-        "endpoints": {
-            "single_rating": "/rating/{platform}/{username}",
-            "multiple_ratings": "/ratings (POST)",
-            "health": "/health",
-            "platforms": "/platforms"
-        },
-        "rate_limit": f"{RATE_LIMIT} requests per {RATE_WINDOW//60} minutes"
-    }
+def root():
+    return {"service": "CPStats API", "version": "1.1.0", "platforms": PLATFORMS,
+            "status": "historical project", "health": "/health"}
 
 
 @app.get("/health")
-async def health_check():
-    """Health check endpoint with system information"""
-    try:
-        # Basic health check
-        health_data = {
-            "status": "healthy",
-            "message": "API is running",
-            "timestamp": int(time.time()),
-            "version": "1.0.0"
-        }
-
-        # Add environment info (non-sensitive)
-        health_data["environment"] = {
-            "debug": os.getenv("DEBUG", "False").lower() == "true",
-            "cache_enabled": os.getenv("ENABLE_CACHE", "True").lower() == "true",
-            "rate_limit": f"{RATE_LIMIT} requests per {RATE_WINDOW//60} minutes"
-        }
-
-        return health_data
-    except Exception as e:
-        logger.error(f"Health check failed: {str(e)}")
-        raise HTTPException(status_code=503, detail="Service unavailable")
-
-
-@app.get("/rating/{platform}/{username}")
-async def get_single_rating(
-    platform: str,
-    username: str,
-    api_key: str = Depends(verify_api_key)
-):
-    """
-    Get rating for a single platform and username (Requires API key)
-
-    - **platform**: Platform name (leetcode, codeforces, codechef, atcoder)
-    - **username**: Username on the platform
-    """
-    try:
-        # Use cache if enabled
-        if os.getenv("ENABLE_CACHE", "True").lower() == "true":
-            cache_key = get_cache_key()
-            result = cached_single_rating(platform, username, cache_key)
-        else:
-            result = rating_fetcher.get_rating_by_platform(platform, username)
-
-        return result
-    except Exception as e:
-        logger.error(f"Error fetching single rating: {str(e)}")
-        raise HTTPException(
-            status_code=500, detail="Internal server error")
-
-
-@app.post("/ratings")
-async def get_multiple_ratings(
-    request: MultipleRatingRequest,
-    api_key: str = Depends(verify_api_key)
-):
-    """
-    Get ratings for multiple platform/username pairs (Requires API key)
-
-    Request body should contain a list of platform/username pairs with API key
-    """
-    try:
-        if not request.requests:
-            raise HTTPException(status_code=400, detail="No requests provided")
-
-        if len(request.requests) > 20:  # Limit batch size
-            raise HTTPException(
-                status_code=400, detail="Maximum 20 requests per batch")
-
-        # Convert Pydantic models to dicts
-        requests_data = [req.dict() for req in request.requests]
-
-        result = rating_fetcher.get_multiple_ratings(requests_data)
-        return result
-    except Exception as e:
-        logger.error(f"Error fetching multiple ratings: {str(e)}")
-        raise HTTPException(
-            status_code=500, detail="Internal server error")
-
-
-@app.post("/rating")
-async def get_single_rating_post(
-    request: SingleRatingRequest,
-    api_key: str = Depends(verify_api_key)
-):
-    """
-    Get rating for a single platform and username (POST method, Requires API key)
-    """
-    try:
-        if os.getenv("ENABLE_CACHE", "True").lower() == "true":
-            cache_key = get_cache_key()
-            result = cached_single_rating(
-                request.platform, request.username, cache_key)
-        else:
-            result = rating_fetcher.get_rating_by_platform(
-                request.platform, request.username)
-
-        return result
-    except Exception as e:
-        logger.error(f"Error fetching single rating (POST): {str(e)}")
-        raise HTTPException(
-            status_code=500, detail="Internal server error")
+def health():
+    if not API_KEY:
+        raise HTTPException(503, "API key is not configured")
+    return {"status": "healthy", "version": "1.1.0"}
 
 
 @app.get("/platforms")
-async def get_supported_platforms():
-    """Get list of supported platforms"""
-    return {
-        "platforms": [
-            {
-                "name": "leetcode",
-                "description": "LeetCode competitive programming platform",
-                "rating_type": "Contest rating"
-            },
-            {
-                "name": "codeforces",
-                "description": "Codeforces competitive programming platform",
-                "rating_type": "Contest rating"
-            },
-            {
-                "name": "codechef",
-                "description": "CodeChef competitive programming platform",
-                "rating_type": "Contest rating"
-            },
-            {
-                "name": "atcoder",
-                "description": "AtCoder competitive programming platform",
-                "rating_type": "Contest rating"
-            }
-        ]
-    }
+def platforms():
+    return {"platforms": list(PLATFORMS)}
+
+
+@app.get("/rating/{platform}/{username}", dependencies=[Depends(authenticated)])
+def single_get(platform: str, username: str):
+    return lookup(platform, username)
+
+
+@app.post("/rating", dependencies=[Depends(authenticated)])
+def single_post(request: RatingRequest):
+    return lookup(request.platform, request.username)
+
+
+@app.post("/ratings", dependencies=[Depends(authenticated)])
+def batch(request: MultipleRatingRequest):
+    # Blocking requests run in a worker pool; each item has its own error status.
+    items = [item.model_dump() for item in request.requests]
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        results = list(pool.map(lambda item: fetcher.get_rating_by_platform(**item), items))
+    return {"results": results, "total_requests": len(results),
+            "successful_requests": sum(item.get("status") == "success" for item in results)}
+
 
 if __name__ == "__main__":
-    host = os.getenv("API_HOST", "0.0.0.0")
-    # Use port 7860 for Hugging Face Spaces, 8000 as fallback
-    port = int(os.getenv("PORT", os.getenv("API_PORT", "7860")))
-    debug = os.getenv("DEBUG", "False").lower() == "true"
-
-    logger.info(f"Starting server on {host}:{port}")
-
-    # For production/container environments, don't use reload
-    if debug and os.getenv("CONTAINER_ENV") != "true":
-        uvicorn.run("main:app", host=host, port=port, reload=True)
-    else:
-        uvicorn.run(app, host=host, port=port)
+    import uvicorn
+    uvicorn.run(app, host=os.getenv("API_HOST", "0.0.0.0"),
+                port=int(os.getenv("PORT", "7860")))
